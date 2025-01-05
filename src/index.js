@@ -36,8 +36,6 @@ connectDB()
 
 
 
-
-
 //INFO: First Approach to connect to database
 
 // import mongoose from "mongoose";
