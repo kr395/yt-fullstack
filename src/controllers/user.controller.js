@@ -4,6 +4,25 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { apiResponse } from "../utils/apiResponse.js";
 
+// to generate 'Access token and refresh token at same time
+const generateAccessTokenAndRefreshToken = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    const refreshToken = user.generateRefreshToken();
+    const accessToken = user.generateAccessToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new apiError(
+      500,
+      "Something went wrong while generating access token and refresh token"
+    );
+  }
+};
+
 const registerUser = asyncHandler(async (req, res) => {
   // res.status(200).json({message : "User Registered Successfully"});
   // You have to define steps to solve a problem
@@ -98,4 +117,99 @@ const registerUser = asyncHandler(async (req, res) => {
     .json(new apiResponse(200, "User Registered Successfully", createdUser));
 });
 
-export { registerUser };
+const loginUser = asyncHandler(async (req, res) => {
+  //STEP: 1  // get user details from frontend
+  //STEP: 2  // Check user is registered or not // username // email
+  //STEP: 3  // Check password is correct or not
+  //STEP: 4  // create access token // refresh token
+  //STEP: 5  // Send Secure Cookies to frontend
+  //STEP: 5  // return response
+
+  //IMP: Implementation
+
+  //STEP: 1  // get user details from frontend
+
+  const { email, userName, password } = req.body;
+
+  if ([email, userName, password].some((field) => field?.trim().length === 0)) {
+    throw new apiError(400, "Please fill all the fields");
+  } else if (!email && !userName) {
+    throw new apiError(400, "Please enter email or username");
+  }
+
+  //STEP: 2  // Check user is registered or not // username // email
+  const LoggedUser = await User.findOne({
+    $or: [{ userName }, { password }],
+  });
+  if (!LoggedUser) {
+    throw new apiError(
+      404,
+      "You are not Registered with Us. Please Register Yourself"
+    );
+  }
+
+  //STEP: 3  // Check password is correct or not
+
+  const isPasswordValid = LoggedUser.isPasswordMatch(password);
+
+  if (!isPasswordValid) {
+    throw new apiError(401, "Incorrect Password");
+  }
+
+  //STEP: 4  // create access token // refresh token
+
+  const { accessToken, refreshToken } =
+    await generateAccessTokenAndRefreshToken(LoggedUser._id);
+
+  const LoggedInUser = await User.findById(LoggedUser._id).select(
+    "-password -refreshToken"
+  );
+
+  //STEP: 5  // Send Secure Cookies to frontend
+
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new apiResponse(
+        200,
+        {
+          user: LoggedInUser,
+          accessToken,
+          refreshToken,
+        },
+        "Login Successfully"
+      )
+    );
+});
+
+const logoutUser = asyncHandler(async (req, res) => {
+  // Create Middleware of auth middleware
+  await User.findOneAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        refreshToken: undefined,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new apiResponse(200,{}, "Logout Successfully"));
+});
+
+export { registerUser, loginUser, logoutUser };
