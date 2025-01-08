@@ -3,6 +3,7 @@ import apiError from "../utils/apiError.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { apiResponse } from "../utils/apiResponse.js";
+import jwt from "jsonwebtoken";
 
 // to generate 'Access token and refresh token at same time
 const generateAccessTokenAndRefreshToken = async (userId) => {
@@ -139,7 +140,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   //STEP: 2  // Check user is registered or not // username // email
   const LoggedUser = await User.findOne({
-    $or: [{ userName }, { password }],
+    $or: [{ email }, { password }],
   });
   if (!LoggedUser) {
     throw new apiError(
@@ -150,7 +151,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   //STEP: 3  // Check password is correct or not
 
-  const isPasswordValid = LoggedUser.isPasswordMatch(password);
+  const isPasswordValid = await LoggedUser.isPasswordMatch(password);
 
   if (!isPasswordValid) {
     throw new apiError(401, "Incorrect Password");
@@ -212,4 +213,60 @@ const logoutUser = asyncHandler(async (req, res) => {
     .json(new apiResponse(200,{}, "Logout Successfully"));
 });
 
-export { registerUser, loginUser, logoutUser };
+const refreshAccessToken = asyncHandler(async (req, res) => {
+ try {
+   //STEP: 1  // get refresh token from frontend // cookie // header // Body
+    const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken
+    if ( !incomingRefreshToken ) {
+     throw new apiError(401, "Please Login First to Access This Resource");
+     
+    }
+   //STEP: 2  // Check refresh token is valid or not
+   const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+   
+   const user = await User.findById(decodedToken._id, (err, user) => {
+     
+   })
+ 
+   if ( !user ) {
+     throw new apiError(401, "Invalid refresh token");
+    }
+ 
+    if ( user?.refreshToken !== incomingRefreshToken ) {
+     throw new apiError(401, "Refresh token is expired or used");
+    }
+ 
+    
+    //STEP: 3  // create new access token and refresh token
+    const options = {
+     httpOnly: true,
+     secure: true,
+   };
+    const { accessToken, newRefreshToken } = await generateAccessTokenAndRefreshToken(user._id, res, options);
+ 
+   //STEP: 4  // Send new access token to frontend // Cockie
+   
+ 
+   //STEP: 5  // return response
+ 
+   return res
+     .status(200)
+     .cookie("accessToken", accessToken, options)
+     .cookie("refreshToken", newRefreshToken, options)
+     .json(
+       new apiResponse(
+         200,
+         {
+           accessToken,
+           refreshToken : newRefreshToken,
+         }
+       )
+     );
+ } catch (error) {
+   throw new apiError(401, error?.message || "Invalid refresh token");
+ }
+
+
+
+});
+export { registerUser, loginUser, logoutUser, refreshAccessToken };
