@@ -194,8 +194,8 @@ const logoutUser = asyncHandler(async (req, res) => {
   await User.findOneAndUpdate(
     req.user._id,
     {
-      $set: {
-        refreshToken: undefined,
+      $unset: {
+        refreshToken: 1,
       },
     },
     {
@@ -218,17 +218,20 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     //STEP: 1  // get refresh token from frontend // cookie // header // Body
     const incomingRefreshToken =
       req.cookies?.refreshToken || req.body?.refreshToken;
-    if (!incomingRefreshToken) {
-      throw new apiError(401, "Please Login First to Access This Resource");
-    }
-    //STEP: 2  // Check refresh token is valid or not
-    const decodedToken = jwt.verify(
-      incomingRefreshToken,
-      process.env.REFRESH_TOKEN_SECRET
-    );
-
-    const user = await User.findById(decodedToken._id, (err, user) => {});
-
+      
+      if (!incomingRefreshToken) {
+        throw new apiError(401, "Please Login First to Access This Resource");
+      }
+      //STEP: 2  // Check refresh token is valid or not
+      const decodedToken = jwt.verify(
+        incomingRefreshToken,
+        process.env.REFRESH_TOKEN_SECRET
+      );
+      console.log( decodedToken);
+      
+    const user = await User.findById(decodedToken?.id);
+    console.log(user);
+    
     if (!user) {
       throw new apiError(401, "Invalid refresh token");
     }
